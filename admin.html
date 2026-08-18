@@ -28,7 +28,68 @@ function editGame(id){const game=state.games.find(g=>g.id===id);if(!game){alert(
 function openEditor(game){$('editor').classList.remove('hidden');$('editor-title').textContent=game?'Editar jogo':'Adicionar jogo';$('edit-id').value=game?.id||'';$('f-title').value=game?.title||'';$('f-status').value=game?.status||'upcoming';$('f-year').value=game?.year||'';$('f-episode').value=game?.episode||'';$('f-genre').value=game?.genre||'';$('f-platform').value=game?.platform||'';$('f-cover').value=game?.cover||'';$('f-description').value=game?.status==='completed'?(game.synopsis||''):(game?.note||'');renderReviewFields(game);}
 function closeEditor(){$('editor').classList.add('hidden');$('game-form').reset();}
 function renderReviewFields(game){const box=$('review-fields');if($('f-status').value!=='completed'){box.classList.add('hidden');return}box.classList.remove('hidden');$('review-list').innerHTML=state.hosts.map(h=>{const r=state.reviews.find(x=>x.game_id===game?.id&&x.host_id===h.id);return `<div class="review-card"><strong>${esc(h.name)}</strong><label class="field">Nota<input class="input review-score" data-host="${h.id}" type="number" min="0" max="10" step="0.1" value="${r?.score??''}"></label><label class="field">Review<textarea class="textarea review-text" data-host="${h.id}" rows="4">${esc(r?.review||'')}</textarea></label></div>`}).join('');}
-async function saveGame(e){e.preventDefault();const status=$('f-status').value,id=$('edit-id').value||'game_'+Date.now();const game={id,title:$('f-title').value.trim(),year:Number($('f-year').value)||null,episode:$('f-episode').value.trim(),genre:$('f-genre').value.trim(),platform:$('f-platform').value.trim(),cover:$('f-cover').value.trim()||null,status,note:status==='upcoming'?$('f-description').value.trim():null,synopsis:status==='completed'?$('f-description').value.trim():null,average:null};if(status==='completed'){const rows=state.hosts.map(h=>({host_id:h.id,score:Number($(`.review-score[data-host="${h.id}"]`).value)||0,review:$(`.review-text[data-host="${h.id}"]`).value.trim()}));const valid=rows.filter(r=>Number.isFinite(r.score));game.average=valid.length?Math.round(valid.reduce((a,r)=>a+r.score,0)/valid.length*10)/10:0;const {error:ue}=await supabaseClient.from('games').upsert(game);if(ue){alert('Erro ao salvar jogo: '+ue.message);return}const {error:de}=await supabaseClient.from('reviews').delete().eq('game_id',id);if(de){alert('Jogo salvo, mas houve erro ao atualizar reviews: '+de.message);return}if(rows.length){const {error:re}=await supabaseClient.from('reviews').insert(rows.map(r=>({...r,game_id:id})));if(re){alert('Jogo salvo, mas houve erro nas reviews: '+re.message);return}}}else{game.average=null;const {error:ue}=await supabaseClient.from('games').upsert(game);if(ue){alert('Erro ao salvar jogo: '+ue.message);return}await supabaseClient.from('reviews').delete().eq('game_id',id);}closeEditor();await refreshState();}
+async function saveGame(e){
+  e.preventDefault();
+  const status=$('f-status').value;
+  const existingId=$('edit-id').value.trim();
+  const isEdit=Boolean(existingId);
+  const id=existingId||'game_'+Date.now();
+  const game={
+    id,
+    title:$('f-title').value.trim(),
+    year:Number($('f-year').value)||null,
+    episode:$('f-episode').value.trim(),
+    genre:$('f-genre').value.trim(),
+    platform:$('f-platform').value.trim(),
+    cover:$('f-cover').value.trim()||null,
+    status,
+    note:status==='upcoming'?$('f-description').value.trim():null,
+    synopsis:status==='completed'?$('f-description').value.trim():null,
+    average:null
+  };
+
+  try{
+    if(status==='completed'){
+      const rows=state.hosts.map(h=>({
+        host_id:h.id,
+        score:Number($(`.review-score[data-host="${h.id}"]`).value)||0,
+        review:$(`.review-text[data-host="${h.id}"]`).value.trim()
+      }));
+      const valid=rows.filter(r=>Number.isFinite(r.score));
+      game.average=valid.length?Math.round(valid.reduce((a,r)=>a+r.score,0)/valid.length*10)/10:0;
+
+      const gameResult=isEdit
+        ? await supabaseClient.from('games').update(game).eq('id',id).select().maybeSingle()
+        : await supabaseClient.from('games').insert(game).select().maybeSingle();
+      if(gameResult.error) throw new Error('Erro ao salvar o jogo: '+gameResult.error.message);
+
+      const {error:de}=await supabaseClient.from('reviews').delete().eq('game_id',id);
+      if(de) throw new Error('O jogo foi salvo, mas não foi possível atualizar as reviews: '+de.message);
+
+      if(rows.length){
+        const reviewRows=rows.map(r=>({...r,game_id:id}));
+        const {error:re}=await supabaseClient.from('reviews').insert(reviewRows);
+        if(re) throw new Error('O jogo foi salvo, mas não foi possível salvar as reviews: '+re.message);
+      }
+    }else{
+      game.average=null;
+      const gameResult=isEdit
+        ? await supabaseClient.from('games').update(game).eq('id',id).select().maybeSingle()
+        : await supabaseClient.from('games').insert(game).select().maybeSingle();
+      if(gameResult.error) throw new Error('Erro ao salvar o jogo: '+gameResult.error.message);
+
+      const {error:de}=await supabaseClient.from('reviews').delete().eq('game_id',id);
+      if(de) throw new Error('O jogo foi salvo, mas não foi possível remover as reviews antigas: '+de.message);
+    }
+
+    closeEditor();
+    await refreshState();
+    alert(isEdit?'Jogo atualizado com sucesso.':'Jogo criado com sucesso.');
+  }catch(err){
+    console.error(err);
+    alert(err.message||'Não foi possível salvar o jogo.');
+  }
+}
 async function deleteGame(id){const g=state.games.find(x=>x.id===id);if(!g||!confirm(`Excluir "${g.title}"? Essa ação não pode ser desfeita.`))return;const {error}=await supabaseClient.from('games').delete().eq('id',id);if(error){alert('Erro ao excluir: '+error.message);return}await refreshState();}
 async function savePodcast(){const name=$('setting-name').value.trim()||'Lobão Podcast',description=$('setting-description').value.trim();const {error:pe}=await supabaseClient.from('podcast').upsert({id:1,name,description});if(pe){alert('Erro ao salvar podcast: '+pe.message);return}for(const [i,h] of state.hosts.entries()){const {error}=await supabaseClient.from('hosts').upsert({id:h.id,name:$(`.host-name[data-i="${i}"]`).value.trim(),role:$(`.host-role[data-i="${i}"]`).value.trim(),initials:$(`.host-initials[data-i="${i}"]`).value.trim()});if(error){alert('Erro ao salvar integrante: '+error.message);return}}await refreshState();alert('Informações salvas no banco.');}
 async function seedInitial(){if(!confirm('Importar os dados atuais do data.js para o Supabase? Isso criará/atualizará esses registros.'))return;await seedData(PODCAST_DATA);alert('Dados iniciais importados.');await refreshState();}
