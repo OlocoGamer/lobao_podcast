@@ -66,7 +66,7 @@
 
   async function loadData(){
     const [gamesRes, hostsRes, reviewsRes] = await Promise.all([
-      supabase.from("games").select("id,title,year,platform,genre,episode,status,synopsis,cover,average,created_at").eq("status","completed").order("created_at",{ascending:true}),
+      supabase.from("games").select("id,title,year,platform,genre,episode,status,synopsis,cover,average,created_at").order("created_at",{ascending:true}),
       supabase.from("hosts").select("id,name,role,initials").order("id"),
       supabase.from("reviews").select("game_id,host_id,score,review")
     ]);
@@ -86,7 +86,12 @@
     }
 
     data.hosts = hostsRes.data || [];
-    data.completed = (gamesRes.data || []).map(g => ({
+    data.completed = (gamesRes.data || []).filter(g =>
+      String(g.status || '').toLowerCase() === 'completed' ||
+      String(g.status || '').toLowerCase() === 'zerado' ||
+      String(g.status || '').toLowerCase() === 'já zeramos' ||
+      String(g.status || '').toLowerCase() === 'ja zeramos'
+    ).map(g => ({
       ...g,
       hosts: reviewMap.get(g.id) || []
     }));
@@ -148,7 +153,7 @@
 
   loadData().catch(err=>{
     console.error(err);
-    document.getElementById("completed-grid").innerHTML=`<div class="empty">Não foi possível carregar os jogos zerados.</div>`;
+    document.getElementById("completed-grid").innerHTML=`<div class="empty">Não foi possível carregar os jogos zerados.<br><small>${esc(err?.message || err)}</small></div>`;
   });
 </script>
 </body></html>
