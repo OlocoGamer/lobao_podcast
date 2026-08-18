@@ -69,7 +69,7 @@
     console.log("[LOBÃO DEBUG] URL:", SUPABASE_URL);
     // Carrega primeiro somente os jogos. Assim, um problema de leitura
     // em hosts/reviews não impede a lista de jogos de aparecer.
-    const { data: games, error } = await supabase
+    const { data: games, error } = await supabaseClient
       .from("games")
       .select("id,title,year,platform,genre,episode,status,synopsis,cover,average,created_at")
       .order("created_at", { ascending: true });
