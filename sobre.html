@@ -62,17 +62,21 @@
 
 <footer><div class="container footer-row"><span>© <span id="year"></span> Lobão Podcast</span><span>Três opiniões, uma mesa.</span></div></footer>
 
-<script src="data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="data.js"></script><script src="supabase-client.js"></script>
 <script>
-  function loadData(){try{return JSON.parse(localStorage.getItem("lobaoPodcastData")) || JSON.parse(JSON.stringify(PODCAST_DATA));}catch(e){return JSON.parse(JSON.stringify(PODCAST_DATA));}}
-  function esc(s){return String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#039;"}[c]));}
-  const data=loadData();
-  document.title=(data.podcast?.name||"Lobão Podcast")+" | Sobre";
-  const description=data.podcast?.description||"";
-  document.getElementById("description").textContent=description;
-  document.getElementById("description-detail").textContent=description;
-  document.getElementById("hosts").innerHTML=(data.hosts||[]).map(h=>`<div class="host"><strong>${esc(h.name)}</strong><small>${esc(h.role)}</small></div>`).join("");
-  document.getElementById("year").textContent=new Date().getFullYear();
+async function loadAbout(){
+  try{
+    const [{data:pod,error:pe},{data:hosts,error:he}]=await Promise.all([supabaseClient.from("podcast").select("*").limit(1),supabaseClient.from("hosts").select("*").order("id")]);
+    if(pe||he)throw pe||he;
+    const podcast=pod?.[0]||PODCAST_DATA.podcast;
+    document.title=(podcast.name||"Lobão Podcast")+" | Sobre";
+    document.getElementById("description").textContent=podcast.description||"";document.getElementById("description-detail").textContent=podcast.description||"";
+    document.getElementById("hosts").innerHTML=(hosts||[]).map(h=>`<div class="host"><strong>${esc(h.name)}</strong><small>${esc(h.role||"")}</small></div>`).join("");
+  }catch(e){
+    console.error(e);const data=JSON.parse(JSON.stringify(PODCAST_DATA));document.title=(data.podcast.name||"Lobão Podcast")+" | Sobre";document.getElementById("description").textContent=data.podcast.description||"";document.getElementById("description-detail").textContent=data.podcast.description||"";document.getElementById("hosts").innerHTML=(data.hosts||[]).map(h=>`<div class="host"><strong>${esc(h.name)}</strong><small>${esc(h.role||"")}</small></div>`).join("");
+  }
+}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}document.getElementById("year").textContent=new Date().getFullYear();loadAbout();
 </script>
 </body>
 </html>
