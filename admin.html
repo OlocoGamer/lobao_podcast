@@ -63,7 +63,43 @@ async function saveGame(e){
   }catch(err){console.error(err);alert(err.message||'Não foi possível salvar o jogo.');}
 }
 async function deleteGame(id){const g=state.games.find(x=>x.id===id);if(!g||!confirm(`Excluir "${g.title}"? Essa ação não pode ser desfeita.`))return;const {error}=await supabaseClient.from('games').delete().eq('id',id);if(error){alert('Erro ao excluir: '+error.message);return}await refreshState();}
-async function savePodcast(){const name=$('setting-name').value.trim()||'Lobão Podcast',description=$('setting-description').value.trim();const {error:pe}=await supabaseClient.from('podcast').upsert({id:1,name,description});if(pe){alert('Erro ao salvar podcast: '+pe.message);return}for(const [i,h] of state.hosts.entries()){const {error}=await supabaseClient.from('hosts').upsert({id:h.id,name:$(`.host-name[data-i="${i}"]`).value.trim(),role:$(`.host-role[data-i="${i}"]`).value.trim(),initials:$(`.host-initials[data-i="${i}"]`).value.trim()});if(error){alert('Erro ao salvar integrante: '+error.message);return}}await refreshState();alert('Informações salvas no banco.');}
+async function savePodcast(){
+  try{
+    const name=String($('setting-name').value||'').trim()||'Lobão Podcast';
+    const description=String($('setting-description').value||'').trim();
+
+    if(state.podcast?.id){
+      const {error}=await supabaseClient.from('podcast').update({name,description}).eq('id',state.podcast.id);
+      if(error) throw error;
+    }else{
+      const {data,error}=await supabaseClient.from('podcast').insert({name,description}).select().single();
+      if(error) throw error;
+      state.podcast=data;
+    }
+
+    for(const [i,h] of state.hosts.entries()){
+      const nameEl=document.querySelector(`.host-name[data-i=\"${i}\"]`);
+      const roleEl=document.querySelector(`.host-role[data-i=\"${i}\"]`);
+      const initialsEl=document.querySelector(`.host-initials[data-i=\"${i}\"]`);
+      if(!nameEl||!roleEl||!initialsEl) throw new Error(`Não foi possível localizar os campos do integrante ${i+1}.`);
+
+      const payload={
+        name:String(nameEl.value||'').trim(),
+        role:String(roleEl.value||'').trim(),
+        initials:String(initialsEl.value||'').trim()
+      };
+
+      const {error}=await supabaseClient.from('hosts').update(payload).eq('id',h.id);
+      if(error) throw error;
+    }
+
+    await refreshState();
+    alert('Informações salvas no banco.');
+  }catch(e){
+    console.error('savePodcast:',e);
+    alert('Não foi possível salvar as informações: '+(e?.message||e));
+  }
+}
 async function seedInitial(){if(!confirm('Importar os dados atuais do data.js para o Supabase? Isso criará/atualizará esses registros.'))return;await seedData(PODCAST_DATA);alert('Dados iniciais importados.');await refreshState();}
 async function seedData(d){const {error:pe}=await supabaseClient.from('podcast').upsert({id:1,name:d.podcast.name,description:d.podcast.description});if(pe)throw pe;const {error:he}=await supabaseClient.from('hosts').upsert(d.hosts);if(he)throw he;const games=[...(d.upcoming||[]).map(g=>({id:g.id,title:g.title,year:g.year||null,platform:g.platform||'',genre:g.genre||'',episode:g.episode||'',status:'upcoming',note:g.note||'',synopsis:null,cover:g.cover||null,average:null})),...(d.completed||[]).map(g=>({id:g.id,title:g.title,year:g.year||null,platform:g.platform||'',genre:g.genre||'',episode:g.episode||'',status:'completed',note:null,synopsis:g.synopsis||'',cover:g.cover||null,average:g.average!=null?(Number(g.average)>5?Number(g.average)/2:Number(g.average)):0}))];const {error:ge}=await supabaseClient.from('games').upsert(games);if(ge)throw ge;for(const g of (d.completed||[])){await supabaseClient.from('reviews').delete().eq('game_id',g.id);if(g.hosts?.length){const {error}=await supabaseClient.from('reviews').insert(g.hosts.map(r=>({game_id:g.id,host_id:r.hostId,score:Number(r.score)>5?Number(r.score)/2:Number(r.score),review:r.review})));if(error)throw error;}}}
 async function exportData(){const d={podcast:state.podcast||PODCAST_DATA.podcast,hosts:state.hosts,upcoming:state.games.filter(g=>g.status==='upcoming').map(g=>({...g,status:'Na fila'})),completed:state.games.filter(g=>g.status==='completed').map(g=>({...g,hosts:state.reviews.filter(r=>r.game_id===g.id).map(r=>({hostId:r.host_id,score:r.score,review:r.review}))}))};const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='lobao-podcast-backup.json';a.click();URL.revokeObjectURL(a.href);}
