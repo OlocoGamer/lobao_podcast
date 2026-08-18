@@ -16,7 +16,7 @@
 <div id="editor" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.82);backdrop-filter:blur(10px);z-index:50;overflow:auto;padding:18px"><div class="panel" style="max-width:900px;margin:auto"><div class="panel-header"><div><div class="eyebrow">Editor de jogo</div><h2 id="editor-title" style="margin:5px 0">Adicionar jogo</h2></div><button class="mini" id="close-editor">×</button></div><form id="game-form" class="section" style="display:block"><input id="edit-id" type="hidden"><div class="form-grid"><label class="field">Nome do jogo *<input id="f-title" class="input" required></label><label class="field">Status<select id="f-status" class="select"><option value="upcoming">Iremos jogar</option><option value="completed">Já zeramos</option></select></label><label class="field">Ano<input id="f-year" class="input" type="number"></label><label class="field">Episódio<input id="f-episode" class="input" placeholder="#004"></label><label class="field">Gênero<input id="f-genre" class="input"></label><label class="field">Plataforma<input id="f-platform" class="input"></label><label class="field full">URL da capa<input id="f-cover" class="input" placeholder="https://..."><small class="subtle">A imagem deve ser hospedada na internet.</small></label><label class="field full">Descrição / observação<textarea id="f-description" class="textarea" rows="4"></textarea></label></div><div id="review-fields" class="hidden"><h3>Reviews dos três integrantes</h3><div id="review-list"></div></div><div class="editor-actions"><button type="button" class="btn" id="cancel-editor">Cancelar</button><button type="submit" class="btn btn-primary">Salvar jogo</button></div></form></div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="data.js"></script><script src="supabase-client.js"></script>
 <script>
-let state={podcast:null,hosts:[],games:[],reviews:[]};const $=id=>document.getElementById(id);const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+let state={podcast:null,hosts:[],games:[],reviews:[]};const $=id=>{const el=document.getElementById(id);if(!el)throw new Error(`Elemento do painel não encontrado: #${id}`);return el;};const qv=sel=>document.querySelector(sel)?.value??"";const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 async function requireSession(){const {data:{session}}=await supabaseClient.auth.getSession();if(session)showPanel(session);else showLogin();}
 function showLogin(){$("login").classList.remove("hidden");$("panel").classList.add("hidden");$("logout-btn").classList.add("hidden");}
 async function showPanel(session){$("login").classList.add("hidden");$("panel").classList.remove("hidden");$("logout-btn").classList.remove("hidden");$("current-user").textContent=session.user.email||"Usuário autenticado";await refreshState();}
@@ -52,8 +52,8 @@ async function saveGame(e){
     if(status==='completed'){
       const rows=state.hosts.map(h=>({
         host_id:h.id,
-        score:Number($(`.review-score[data-host="${h.id}"]`).value)||0,
-        review:$(`.review-text[data-host="${h.id}"]`).value.trim()
+        score:Number(qv(`.review-score[data-host="${h.id}"]`))||0,
+        review:qv(`.review-text[data-host="${h.id}"]`).trim()
       }));
       const valid=rows.filter(r=>Number.isFinite(r.score));
       game.average=valid.length?Math.round(valid.reduce((a,r)=>a+r.score,0)/valid.length*10)/10:0;
