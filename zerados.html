@@ -65,6 +65,8 @@
   function hostName(id){return data.hosts.find(h=>String(h.id)===String(id))?.name || id;}
 
   async function loadData(){
+    console.log("[LOBÃO DEBUG] SUPABASE:", supabase);
+    console.log("[LOBÃO DEBUG] URL:", SUPABASE_URL);
     // Carrega primeiro somente os jogos. Assim, um problema de leitura
     // em hosts/reviews não impede a lista de jogos de aparecer.
     const { data: games, error } = await supabase
@@ -72,6 +74,8 @@
       .select("id,title,year,platform,genre,episode,status,synopsis,cover,average,created_at")
       .order("created_at", { ascending: true });
 
+    console.log("[LOBÃO DEBUG] Jogos retornados:", games);
+    console.log("[LOBÃO DEBUG] Erro ao consultar games:", error);
     if(error) throw error;
 
     data.completed = (games || []).filter(g => {
@@ -79,11 +83,13 @@
       return status === 'completed' || status === 'zerado' || status === 'já zeramos' || status === 'ja zeramos';
     });
 
+    console.log("[LOBÃO DEBUG] Jogos zerados após filtro:", data.completed);
     renderCompleted();
   }
 
   function renderCompleted(){
     const q=document.getElementById("search").value.toLowerCase().trim();
+    console.log("[LOBÃO DEBUG] Busca:", q, "| Jogos disponíveis:", data.completed);
     const list=data.completed.filter(g=>
       [g.title,g.genre,g.platform,g.episode].join(" ").toLowerCase().includes(q)
     );
