@@ -65,36 +65,19 @@
   function hostName(id){return data.hosts.find(h=>String(h.id)===String(id))?.name || id;}
 
   async function loadData(){
-    const [gamesRes, hostsRes, reviewsRes] = await Promise.all([
-      supabase.from("games").select("id,title,year,platform,genre,episode,status,synopsis,cover,average,created_at").order("created_at",{ascending:true}),
-      supabase.from("hosts").select("id,name,role,initials").order("id"),
-      supabase.from("reviews").select("game_id,host_id,score,review")
-    ]);
+    // Carrega primeiro somente os jogos. Assim, um problema de leitura
+    // em hosts/reviews não impede a lista de jogos de aparecer.
+    const { data: games, error } = await supabase
+      .from("games")
+      .select("id,title,year,platform,genre,episode,status,synopsis,cover,average,created_at")
+      .order("created_at", { ascending: true });
 
-    if(gamesRes.error) throw gamesRes.error;
-    if(hostsRes.error) throw hostsRes.error;
-    if(reviewsRes.error) throw reviewsRes.error;
+    if(error) throw error;
 
-    const reviewMap = new Map();
-    for(const r of (reviewsRes.data || [])){
-      if(!reviewMap.has(r.game_id)) reviewMap.set(r.game_id, []);
-      reviewMap.get(r.game_id).push({
-        hostId:r.host_id,
-        score:Number(r.score) || 0,
-        review:r.review || ""
-      });
-    }
-
-    data.hosts = hostsRes.data || [];
-    data.completed = (gamesRes.data || []).filter(g =>
-      String(g.status || '').toLowerCase() === 'completed' ||
-      String(g.status || '').toLowerCase() === 'zerado' ||
-      String(g.status || '').toLowerCase() === 'já zeramos' ||
-      String(g.status || '').toLowerCase() === 'ja zeramos'
-    ).map(g => ({
-      ...g,
-      hosts: reviewMap.get(g.id) || []
-    }));
+    data.completed = (games || []).filter(g => {
+      const status = String(g.status || '').trim().toLowerCase();
+      return status === 'completed' || status === 'zerado' || status === 'já zeramos' || status === 'ja zeramos';
+    });
 
     renderCompleted();
   }
@@ -123,26 +106,40 @@
       </article>`).join('') : `<div class="empty">Nenhum jogo encontrado para essa busca.</div>`;
   }
 
-  function openGame(id){
+  async function openGame(id){
     const g=data.completed.find(x=>String(x.id)===String(id));
     if(!g)return;
 
     document.getElementById("modal-episode").textContent=g.episode||"";
     document.getElementById("modal-title").textContent=g.title||"";
     document.getElementById("modal-meta").textContent=`${g.year||""} · ${g.genre||""} · ${g.platform||""}`;
-    document.getElementById("modal-rating").textContent=Number(g.average||0).toFixed(1) + " / 5";
+    document.getElementById("modal-rating").textContent=Number(g.average ?? 0).toFixed(1) + " / 5";
     document.getElementById("modal-synopsis").textContent=g.synopsis||"";
-
-    document.getElementById("reviews").innerHTML=(g.hosts||[]).map(r=>`
-      <div class="review">
-        <div class="review-head">
-          <strong>${esc(hostName(r.hostId))}</strong>
-          <span class="review-score">${Number(r.score||0).toFixed(1)} / 5</span>
-        </div>
-        <p>${esc(r.review||"")}</p>
-      </div>`).join('');
-
+    document.getElementById("reviews").innerHTML='<div class="meta">Carregando reviews...</div>';
     document.getElementById("modal").classList.add("open");
+
+    try {
+      const [{data: reviews, error: re}, {data: hosts, error: he}] = await Promise.all([
+        supabase.from("reviews").select("host_id,score,review").eq("game_id", g.id),
+        supabase.from("hosts").select("id,name,role,initials")
+      ]);
+
+      if(re) throw re;
+      if(he) throw he;
+
+      const hostMap = new Map((hosts || []).map(h => [String(h.id), h.name]));
+      document.getElementById("reviews").innerHTML=(reviews || []).map(r=>`
+        <div class="review">
+          <div class="review-head">
+            <strong>${esc(hostMap.get(String(r.host_id)) || r.host_id)}</strong>
+            <span class="review-score">${Number(r.score ?? 0).toFixed(1)} / 5</span>
+          </div>
+          <p>${esc(r.review || "")}</p>
+        </div>`).join('') || '<div class="meta">Nenhuma review cadastrada.</div>';
+    } catch(err) {
+      console.error(err);
+      document.getElementById("reviews").innerHTML=`<div class="meta">Não foi possível carregar as reviews.<br><small>${esc(err.message || err)}</small></div>`;
+    }
   }
 
   function closeModal(){document.getElementById("modal").classList.remove("open");}
