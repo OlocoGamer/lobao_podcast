@@ -50,39 +50,105 @@
   <div class="modal-body"><div style="display:flex;align-items:center;gap:16px"><div class="rating" id="modal-rating"></div><div class="meta">média das três notas</div></div><p id="modal-synopsis" style="color:var(--muted);line-height:1.7"></p><div id="reviews"></div></div>
 </div></div>
 
-<script src="data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  let data = loadData();
-  function loadData(){try{return JSON.parse(localStorage.getItem("lobaoPodcastData")) || JSON.parse(JSON.stringify(PODCAST_DATA));}catch(e){return JSON.parse(JSON.stringify(PODCAST_DATA));}}
-  function esc(s){return String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));}
-  function hostName(id){return data.hosts.find(h=>h.id===id)?.name || id;}
+  const SUPABASE_URL = "https://rzgisiuxfccjkpbfqpge.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_Qw4ctAqAtEQteCytcsuT1g_H8AQDovu";
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  let data = { completed: [], hosts: [] };
+
+  function esc(s){
+    return String(s ?? "").replace(/[&<>\"']/g,c=>({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#039;"
+    }[c]));
+  }
+  function hostName(id){return data.hosts.find(h=>String(h.id)===String(id))?.name || id;}
+
+  async function loadData(){
+    const [gamesRes, hostsRes, reviewsRes] = await Promise.all([
+      supabase.from("games").select("id,title,year,platform,genre,episode,status,synopsis,cover,average,created_at").eq("status","completed").order("created_at",{ascending:true}),
+      supabase.from("hosts").select("id,name,role,initials").order("id"),
+      supabase.from("reviews").select("game_id,host_id,score,review")
+    ]);
+
+    if(gamesRes.error) throw gamesRes.error;
+    if(hostsRes.error) throw hostsRes.error;
+    if(reviewsRes.error) throw reviewsRes.error;
+
+    const reviewMap = new Map();
+    for(const r of (reviewsRes.data || [])){
+      if(!reviewMap.has(r.game_id)) reviewMap.set(r.game_id, []);
+      reviewMap.get(r.game_id).push({
+        hostId:r.host_id,
+        score:Number(r.score) || 0,
+        review:r.review || ""
+      });
+    }
+
+    data.hosts = hostsRes.data || [];
+    data.completed = (gamesRes.data || []).map(g => ({
+      ...g,
+      hosts: reviewMap.get(g.id) || []
+    }));
+
+    renderCompleted();
+  }
+
   function renderCompleted(){
     const q=document.getElementById("search").value.toLowerCase().trim();
-    const list=(data.completed||[]).filter(g=>[g.title,g.genre,g.platform,g.episode].join(" ").toLowerCase().includes(q));
-    document.getElementById("completed-grid").innerHTML=list.length?list.map(g=>`
+    const list=data.completed.filter(g=>
+      [g.title,g.genre,g.platform,g.episode].join(" ").toLowerCase().includes(q)
+    );
+
+    document.getElementById("completed-grid").innerHTML=list.length ? list.map(g=>`
       <article class="card game-card" onclick="openGame('${esc(g.id)}')">
         <div class="cover">
-          ${g.cover?`<img src="${esc(g.cover)}" alt="Capa de ${esc(g.title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
+          ${g.cover ? `<img src="${esc(g.cover)}" alt="Capa de ${esc(g.title)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : ''}
           <div class="cover-fallback" style="${g.cover?'display:none':''}"><div class="cover-title">${esc(g.title)}</div></div>
-          ${g.cover?`<div class="cover-title">${esc(g.title)}</div>`:''}
+          ${g.cover ? `<div class="cover-title">${esc(g.title)}</div>` : ''}
         </div>
-        <div class="game-info"><h2>${esc(g.title)}</h2><div class="meta">${esc(g.year)} · ${esc(g.genre)} · ${esc(g.platform)}</div><div class="game-footer"><span class="episode">${esc(g.episode)}</span><span class="score">${Number(g.average||0).toFixed(1)} / 5</span></div></div>
-      </article>`).join(''):`<div class="empty">Nenhum jogo encontrado para essa busca.</div>`;
+        <div class="game-info">
+          <h2>${esc(g.title)}</h2>
+          <div class="meta">${esc(g.year || '')} · ${esc(g.genre || '')} · ${esc(g.platform || '')}</div>
+          <div class="game-footer">
+            <span class="episode">${esc(g.episode || '')}</span>
+            <span class="score">${Number(g.average || 0).toFixed(1)} / 5</span>
+          </div>
+        </div>
+      </article>`).join('') : `<div class="empty">Nenhum jogo encontrado para essa busca.</div>`;
   }
+
   function openGame(id){
-    const g=data.completed.find(x=>x.id===id);if(!g)return;
+    const g=data.completed.find(x=>String(x.id)===String(id));
+    if(!g)return;
+
     document.getElementById("modal-episode").textContent=g.episode||"";
     document.getElementById("modal-title").textContent=g.title||"";
     document.getElementById("modal-meta").textContent=`${g.year||""} · ${g.genre||""} · ${g.platform||""}`;
-    document.getElementById("modal-rating").textContent=Number(g.average||0).toFixed(1);
+    document.getElementById("modal-rating").textContent=Number(g.average||0).toFixed(1) + " / 5";
     document.getElementById("modal-synopsis").textContent=g.synopsis||"";
-    document.getElementById("reviews").innerHTML=(g.hosts||[]).map(r=>`<div class="review"><div class="review-head"><strong>${esc(hostName(r.hostId))}</strong><span class="review-score">${Number(r.score||0).toFixed(1)} / 5</span></div><p>${esc(r.review||"")}</p></div>`).join("");
+
+    document.getElementById("reviews").innerHTML=(g.hosts||[]).map(r=>`
+      <div class="review">
+        <div class="review-head">
+          <strong>${esc(hostName(r.hostId))}</strong>
+          <span class="review-score">${Number(r.score||0).toFixed(1)} / 5</span>
+        </div>
+        <p>${esc(r.review||"")}</p>
+      </div>`).join('');
+
     document.getElementById("modal").classList.add("open");
   }
+
   function closeModal(){document.getElementById("modal").classList.remove("open");}
+
   document.getElementById("search").addEventListener("input",renderCompleted);
   document.getElementById("year").textContent=new Date().getFullYear();
   document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
-  renderCompleted();
+
+  loadData().catch(err=>{
+    console.error(err);
+    document.getElementById("completed-grid").innerHTML=`<div class="empty">Não foi possível carregar os jogos zerados.</div>`;
+  });
 </script>
 </body></html>
