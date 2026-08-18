@@ -54,7 +54,7 @@
 <script>
   const SUPABASE_URL = "https://rzgisiuxfccjkpbfqpge.supabase.co";
   const SUPABASE_KEY = "sb_publishable_Qw4ctAqAtEQteCytcsuT1g_H8AQDovu";
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   let data = { completed: [], hosts: [] };
 
   function esc(s){
@@ -65,7 +65,7 @@
   function hostName(id){return data.hosts.find(h=>String(h.id)===String(id))?.name || id;}
 
   async function loadData(){
-    console.log("[LOBÃO DEBUG] SUPABASE:", supabase);
+    console.log("[LOBÃO DEBUG] SUPABASE CLIENT:", supabaseClient);
     console.log("[LOBÃO DEBUG] URL:", SUPABASE_URL);
     // Carrega primeiro somente os jogos. Assim, um problema de leitura
     // em hosts/reviews não impede a lista de jogos de aparecer.
@@ -126,8 +126,8 @@
 
     try {
       const [{data: reviews, error: re}, {data: hosts, error: he}] = await Promise.all([
-        supabase.from("reviews").select("host_id,score,review").eq("game_id", g.id),
-        supabase.from("hosts").select("id,name,role,initials")
+        supabaseClient.from("reviews").select("host_id,score,review").eq("game_id", g.id),
+        supabaseClient.from("hosts").select("id,name,role,initials")
       ]);
 
       if(re) throw re;
